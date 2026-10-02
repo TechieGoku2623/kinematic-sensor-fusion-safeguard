@@ -15,6 +15,12 @@
 
 ## Walkthrough
 
+### How it works
+
+![How it works](docs/assets/how-it-works.gif)
+
+One real batch, in order: what went in, which gate fired, what came out.
+
 Three recordings from this repository. Each one is the command in the frame, not a drawing.
 
 ### Engine
