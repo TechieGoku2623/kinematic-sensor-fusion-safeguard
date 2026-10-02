@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install linters
+        run: pip install black flake8
+      - name: install requirements
+        run: pip install -r requirements.txt
+      - name: format check
+        run: black --check src
+      - name: lint
+        run: flake8 src --max-line-length=88 --extend-ignore=E203
+      - name: test harness
+        run: python src/test_harness.py
