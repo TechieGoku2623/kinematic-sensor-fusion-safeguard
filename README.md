@@ -13,6 +13,14 @@
 | **Website** | https://github.com/TechieGoku2623/kinematic-sensor-fusion-safeguard |
 | **Topics** | `python` `asyncio` `aerospace` `kalman-filter` `sensor-fusion` `imu` |
 
+## The problem this solves
+
+A navigation filter that always trusts the latest GPS or IMU sample will jump when one sensor spikes or skips a sequence number.
+
+Kinematic Sensor Fusion Safeguard runs a two-state constant-velocity Kalman filter on each axis. An update must pass a chi-square gate. Acceleration above 12 g is rejected. A gap in sequence numbers is predict-only: the filter coasts on its model. IMU and GPS time bases that diverge raise, rather than being averaged into a silent error. The published state is position, velocity, reject counts, and covariance.
+
+That gating and dropout handling is the kind of structure described in DO-178C objectives.
+
 ## Walkthrough
 
 ### How it works
