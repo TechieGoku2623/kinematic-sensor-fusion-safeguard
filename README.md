@@ -13,6 +13,14 @@
 | **Website** | https://github.com/TechieGoku2623/kinematic-sensor-fusion-safeguard |
 | **Topics** | `python` `asyncio` `aerospace` `kalman-filter` `sensor-fusion` `imu` |
 
+## Watch the demo
+
+<p align="center">
+  <img src="docs/demo.gif" alt="Kinematic Sensor Fusion Safeguard dashboard walkthrough" width="920"/>
+</p>
+
+Play the video: [docs/watch.html](docs/watch.html)
+
 ## The problem this solves
 
 A navigation filter that always trusts the latest GPS or IMU sample will jump when one sensor spikes or skips a sequence number.
