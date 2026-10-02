@@ -1,95 +1,63 @@
 # Kinematic Sensor Fusion Safeguard
 
-A high-throughput, low-latency asynchronous engine engineered to resolve IMU and GPS disagreement with a per-axis constant-velocity Kalman filter, a scalar chi-square gate, and hard limits on acceleration and clock skew.
+> Fuses IMU acceleration and GPS on three independent constant-velocity Kalman filters and drops updates that fail a chi-square gate.
 
-Website: https://github.com/TechieGoku2623/kinematic-sensor-fusion-safeguard
+<p>
+  <a href="https://github.com/TechieGoku2623/kinematic-sensor-fusion-safeguard/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TechieGoku2623/kinematic-sensor-fusion-safeguard/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white">
+  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea043">
+</p>
 
-Topics: `python` `asyncio` `aerospace` `kalman-filter` `sensor-fusion` `imu`
+| | |
+| --- | --- |
+| **Website** | https://github.com/TechieGoku2623/kinematic-sensor-fusion-safeguard |
+| **Topics** | `python` `asyncio` `aerospace` `kalman-filter` `sensor-fusion` `imu` |
 
+## Walkthrough
 
-## 🏗️ Systems Architecture & Event Topology
+Three recordings from this repository. Each one is the command in the frame, not a drawing.
 
-`KinematicSensorFusionSafeguard` keeps three independent filters. State on each axis is `[position, velocity]`. The transition is `F = [[1, dt], [0, 1]]`. IMU acceleration is the control input, `B = [0.5 dt^2, dt]`. A GPS frame is a position measurement `H = [1, 0]` followed, when the gate accepts it, by a velocity measurement `H = [0, 1]`. The update is explicit 2x2 arithmetic. NumPy is not imported.
+### Engine
 
-`run` packs each sample, hops the bytes through an `asyncio.Queue`, and calls `ingest`. After the batch it publishes the position triple with `struct.pack` onto a bounded outbound queue. That queue is the in-process stand-in for the Kafka topic `flight.sensors.fused`. This process does not join a vehicle bus. TimescaleDB would persist the state dict and is not connected. Redis is not used as a state store. Kinesis is not used.
-
-An `asyncio.Lock` covers the axes, the sequence cursors, and the skew counters. `logging.basicConfig` is called only from `__main__.py`.
-
-```
-IMU (ax, ay, az)                 GPS (position, velocity)
-        \                              /
-         v                            v
-   |a| > 12 g ------------------> EngineKernelException
-   |t_imu - t_gps| > 200 ms ----> EngineKernelException
-   sequence gap ----------------> predict-only, accel = 0, dropouts += gap
-         \                            /
-          v                          v
-   predict: x = F x + B u ,  P = F P F^T + Q
-          |
-          v
-   GPS position: reject if innovation^2 / S > 9
-          |                 else Joseph-form covariance update
-          v
-   position, velocity, rejected_updates, dropouts, skew_rejects
-```
-
-Twelve g is `12 * 9.80665` m/s^2, compared with the Euclidean norm of the acceleration vector. Exactly 12 g is inside the gate. The skew budget is 200_000_000 ns. The chi-square threshold is 9, the square of a 3-sigma residual on one degree of freedom.
-
-## 📊 Core Visual Walkthrough & Engine Pipeline Flow
-
-Engine run.
+`python3 -m kinematic_sensor_fusion_safeguard`
 
 ![Engine run](docs/assets/terminal-walkthrough.gif)
 
-Benchmark harness.
+Acceleration above 12 g is rejected. A sequence gap is predict-only. IMU and GPS clocks that disagree past the skew budget raise.
+
+### Benchmark
+
+`python3 -m kinematic_sensor_fusion_safeguard.harness`
 
 ![Benchmark harness](docs/assets/benchmark-walkthrough.gif)
 
-Unit tests.
+5000 IMU iterations. `random.Random(178)`. The frame ends on the status line and `echo $?`.
+
+### Tests
+
+`python3 -m unittest discover -s tests -v`
 
 ![Unit tests](docs/assets/tests-walkthrough.gif)
 
+Wire round-trip, the happy path, and both edge cases below.
+
+## Pipeline
+
 ```
-frame
-  |
-  +-- kind 1, IMU
-  |     finite? magnitude? skew vs last GPS? sequence? dt?
-  |     coast missing steps with zero acceleration
-  |     predict with this sample's acceleration
-  |
-  +-- kind 2, GPS
-        finite? skew vs last IMU? sequence? dt?
-        coast missing steps with zero acceleration
-        predict with the last IMU acceleration
-        for each axis:
-            y = z_p - position
-            S = P00 + R_pos
-            if y^2 / S > 9: rejected_updates += 1, skip velocity
-            else: position update, then velocity update
+IMU / GPS frame
   |
   v
-snapshot dict, topic name flight.sensors.fused
+per-axis predict  F = [[1, dt], [0, 1]]
+  |
+  v
+innovation^2 / S > gate? -- yes --> reject update
+  |
+  no
+  v
+{position, velocity, rejected_updates, dropouts}
 ```
 
-Process noise uses the discrete white-acceleration form `Q = q [[dt^4/4, dt^3/2], [dt^3/2, dt^2]]` with `q = 1`. Position measurement variance is 9 m^2. Velocity measurement variance is 0.25 (m/s)^2. Covariance is updated with the Joseph form and then symmetrized. The same `Q` and `R` on every axis means the covariance trace can match across axes while position and velocity do not.
-
-Insert the structural terminal walkthrough recording at docs/assets/terminal-walkthrough.gif before publishing the release notes.
-
-## ⚡ Low-Level OS Mechanics & Network Physics
-
-`dt` is the difference of integer nanosecond timestamps divided by 1e9. The first sample of a trace uses a nominal `dt` of 0.01 s because there is no prior stamp. A non-positive step raises. Sequence numbers are tracked per kind, so an IMU counter and a GPS counter do not collide.
-
-A sequence hole of size `gap` increments `dropouts` by `gap` and spreads the elapsed time across `gap + 1` predict steps. The missing steps use zero acceleration. The filter does not synthesize a specific-force sample. Gaps above 4096 are still counted in full; the elapsed time is spread across 4096 coasting steps so a corrupt counter cannot spin the loop.
-
-`statistics.fmean` and `statistics.pstdev` reduce the three covariance traces. The hot path writes no growing buffer: the axes are allocated once. The outbound queue drops the oldest blob when it is full. There is no socket.
-
-## ⚖️ Architecture Trade-offs & Pragmatic Decisions
-
-The three axes do not share a cross-covariance. A full error-state filter would model that correlation and would need a matrix library plus a noise-identification campaign. The 2x2 form is small enough to audit on one screen. The safeguard is the set of hard gates in front of the predict, not a claim that the estimate is optimal.
-
-A GPS position that fails the chi-square gate also skips that axis's velocity update. A biased velocity then coasts until the next accepted fix. Coupling the two measurements that way avoids mixing a rejected position with a trusted velocity from the same fix. It also delays the velocity correction.
-
-## 🚀 Local Installation & Benchmarking
+## Quick start
 
 ```bash
 python3 -m venv venv
@@ -97,7 +65,12 @@ source venv/bin/activate
 pip install -e ".[dev]"
 python -m kinematic_sensor_fusion_safeguard
 python -m kinematic_sensor_fusion_safeguard.harness
+python -m unittest discover -s tests -v
 ```
+
+Python 3.12. The runtime is the standard library. `black` and `flake8` are the `dev` extra.
+
+## Use it
 
 ```python
 import asyncio
@@ -127,35 +100,32 @@ async def demo() -> None:
 asyncio.run(demo())
 ```
 
-Runtime dependencies are the Python 3.12 standard library. `pip install -r requirements.txt` succeeds with no third-party pins. Install the package with `pip install .`.
+## Bounds
 
-## 🖥️ Terminal Diagnostic Output Preview
-
-```
-2026-10-02T03:20:15+0000 WARNING [kinematic_sensor_fusion_safeguard.engine] sensor dropout gap=2 modelled=2
-2026-10-02T03:20:15+0000 INFO [kinematic_sensor_fusion_safeguard.engine] topic=flight.sensors.fused position=[0.04483783134653849, -4.181225898607358e-05, 2.090612949303679e-05] velocity=[0.29384623857816605, 0.0001530439598206165, -7.652197991030825e-05] rejected_updates=0 dropouts=2 skew_rejects=0
-2026-10-02T03:20:15+0000 INFO [__main__] {'topic': 'flight.sensors.fused', 'position': [0.04483783134653849, -4.181225898607358e-05, 2.090612949303679e-05], 'velocity': [0.29384623857816605, 0.0001530439598206165, -7.652197991030825e-05], 'rejected_updates': 0, 'dropouts': 2, 'skew_rejects': 0, 'covariance_trace': 6.853282233599425, 'covariance_spread': 0.0}
-```
-
-`python -m kinematic_sensor_fusion_safeguard` exits 0. The IMU sequence skips two counts, those steps are predict-only, and the GPS fix 20 ms later is inside the skew budget so `skew_rejects` stays 0. `117.680` m/s^2 is the 12 g ceiling (`12 * 9.80665`).
-
-## 📊 Empirical Benchmarking Performance Report
-
-Measured by `PYTHONPATH=src python -m kinematic_sensor_fusion_safeguard.harness` with `random.Random(178)`, 5000 IMU iterations, `time.perf_counter_ns` latency in microseconds, and `tracemalloc` peak.
-
-| Metric | Measured |
+| | |
 | --- | ---: |
-| Status | PASS |
 | Iterations | 5000 |
-| Average latency | 152.689 µs |
-| Empirical P99 | 199.304 µs |
-| Scenario latency | 161.252 µs |
+| Average | 152.689 µs |
+| P99 | 199.304 µs |
 | tracemalloc peak | 201285 bytes |
 
-## 🛡️ Edge-Case Resilience & SOC2/Regulatory Compliance
+Figures are from the harness on the machine that published them. A later host moves the microseconds. The pass/fail result does not.
 
-If the IMU timestamp and the GPS timestamp differ by more than 200 ms, `run` increments `skew_rejects` and raises `EngineKernelException`. The fault text cites both timestamps and the budget. Acceleration whose norm is above 12 g raises before predict runs. The message cites the measured magnitude and the 12 g limit.
+## What it refuses
 
-A sequence hole does not invent the missing acceleration. The filter predicts across the hole with zero specific force and counts the hole in `dropouts`. A GPS position whose squared innovation exceeds `9 * S` is not applied; `rejected_updates` counts each rejected axis, and that axis's velocity update is skipped.
+- A sample above 12 g is rejected and does not update the state.
+- A sequence dropout predicts forward without a measurement. Clock skew between IMU and GPS beyond the budget raises `EngineKernelException`.
 
-The check structure is aligned with DO-178C objectives for traceable input checks: each gate is named, the bound is a constant, and the fault string carries the measured value and the limit. This module is not a DO-178C certification, it does not claim a DAL, and it does not fly an aircraft. No crew identifier is stored. Processing integrity is the operational reading of the counters: a rejected sample is not folded into `position`.
+Input checks are traceable in the style of DO-178C objectives. This build is not certified to a design assurance level.
+
+## Tree
+
+```
+src/kinematic_sensor_fusion_safeguard/
+  engine.py       kernel
+  wire.py         struct frames
+  harness.py      benchmark
+  __main__.py     demo entry
+tests/test_engine.py
+Dockerfile        non-root, uid 10001
+```
