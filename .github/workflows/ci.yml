@@ -2,29 +2,25 @@ name: ci
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
-  lint-and-test:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
-        uses: actions/checkout@v4
-      - name: setup python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: install linters
-        run: pip install black flake8
-      - name: install requirements
-        run: pip install -r requirements.txt
-      - name: format check
-        run: black --check src
-      - name: lint
-        run: flake8 src --max-line-length=88 --extend-ignore=E203
-      - name: test harness
-        run: python src/test_harness.py
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Black
+        run: black --check src tests
+      - name: Flake8
+        run: flake8 src tests --max-line-length=88 --extend-ignore=E203
+      - name: Harness
+        run: python -m kinematic_sensor_fusion_safeguard.harness
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v

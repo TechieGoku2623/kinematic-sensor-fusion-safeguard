@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kinematic-sensor-fusion-safeguard"
+version = "1.0.0"
+description = "Kinematic Sensor Fusion Safeguard"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "TechieGoku2623" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["black==24.8.0", "flake8==7.1.1"]
+
+[project.scripts]
+kinematic-sensor-fusion-safeguard = "kinematic_sensor_fusion_safeguard.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
