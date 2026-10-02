@@ -37,7 +37,17 @@ Twelve g is `12 * 9.80665` m/s^2, compared with the Euclidean norm of the accele
 
 ## 📊 Core Visual Walkthrough & Engine Pipeline Flow
 
-![Terminal walkthrough](docs/assets/terminal-walkthrough.gif)
+Engine run.
+
+![Engine run](docs/assets/terminal-walkthrough.gif)
+
+Benchmark harness.
+
+![Benchmark harness](docs/assets/benchmark-walkthrough.gif)
+
+Unit tests.
+
+![Unit tests](docs/assets/tests-walkthrough.gif)
 
 ```
 frame
