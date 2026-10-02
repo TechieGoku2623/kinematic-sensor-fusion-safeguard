@@ -2,6 +2,11 @@
 
 A high-throughput, low-latency asynchronous engine engineered to resolve IMU and GPS disagreement with a per-axis constant-velocity Kalman filter, a scalar chi-square gate, and hard limits on acceleration and clock skew.
 
+Website: https://github.com/TechieGoku2623/kinematic-sensor-fusion-safeguard
+
+Topics: `python` `asyncio` `aerospace` `kalman-filter` `sensor-fusion` `imu`
+
+
 ## 🏗️ Systems Architecture & Event Topology
 
 `KinematicSensorFusionSafeguard` keeps three independent filters. State on each axis is `[position, velocity]`. The transition is `F = [[1, dt], [0, 1]]`. IMU acceleration is the control input, `B = [0.5 dt^2, dt]`. A GPS frame is a position measurement `H = [1, 0]` followed, when the gate accepts it, by a velocity measurement `H = [0, 1]`. The update is explicit 2x2 arithmetic. NumPy is not imported.
@@ -31,6 +36,8 @@ IMU (ax, ay, az)                 GPS (position, velocity)
 Twelve g is `12 * 9.80665` m/s^2, compared with the Euclidean norm of the acceleration vector. Exactly 12 g is inside the gate. The skew budget is 200_000_000 ns. The chi-square threshold is 9, the square of a 3-sigma residual on one degree of freedom.
 
 ## 📊 Core Visual Walkthrough & Engine Pipeline Flow
+
+![Terminal walkthrough](docs/assets/terminal-walkthrough.gif)
 
 ```
 frame

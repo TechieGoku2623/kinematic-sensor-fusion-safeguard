@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kinematic-sensor-fusion-safeguard"
 version = "1.0.0"
-description = "Kinematic Sensor Fusion Safeguard"
+description = "Aerospace sensor fusion that runs a per-axis Kalman filter and rejects updates outside a chi-square gate."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }

@@ -24,3 +24,10 @@ jobs:
         run: python -m kinematic_sensor_fusion_safeguard.harness
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build runtime image
+        run: docker build --pull -t engine:ci .
